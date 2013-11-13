@@ -21,3 +21,7 @@ trace_parser.o: trace_parser.h trace_parser.cpp
 trace_mapping.o: trace_mapping.h trace_mapping.cpp
 	$(CC) $(BOOST_I) $(CFLAGS) trace_mapping.cpp
 
+clean:
+	\rm *.o *~ Processor.out
+tar:
+	tar cfv pre_processor.tar pre_processor.cpp trace_parser.cpp trace_parser.h trace_mapping.cpp trace_mapping.h

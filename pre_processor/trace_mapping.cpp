@@ -35,34 +35,33 @@ size_t Flow_mapping(const char* dst_file, const char* header_file, const char* f
 	default_random_engine generator;
 	exponential_distribution<double> distribution(interval);
 	// get top max_size timestamp
-	size_t debug = 0;
+	
+	getline(flow_st, st_str);
+	getline(flow_et, et_str);
+	
 	while (!flow_st.eof() || !flow_et.eof()){
+		
+		double interv = 0.0;
+		if (map_intv)
+			interv = stod(st_str);
+		else
+			interv = distribution(generator);
+			
+		flow term(interv, stod(et_str)-stod(st_str));
+			
+		if (term.dur > 1000.0 || term.dur < 10e-5){
+			getline(flow_st, st_str);
+			getline(flow_et, et_str);
+			continue;
+		}
+	
+		timestamp.push(term);
+
+		if (timestamp.size() > max_size)
+			timestamp.pop();
+		
 		getline(flow_st, st_str);
 		getline(flow_et, et_str);
-		
-		vector<string> split_st;
-		vector<string> split_et;
-		
-		boost::split(split_st, st_str, boost::is_any_of(" "));
-		boost::split(split_et, et_str, boost::is_any_of(" "));
-
-		for (size_t i = 0;  i< split_st.size(); i++){
-			double interv = 0.0;
-			if (map_intv)
-				interv = stod(split_st[i]);
-			else
-				interv = distribution(generator);
-			
-			flow term(interv, stod(split_et[i])-stod(split_st[i]));
-			
-			if (term.dur > 1000.0 || term.dur < 10e-5)
-				continue;
-			timestamp.push(term);
-
-			if (timestamp.size() > max_size)
-				timestamp.pop();
-		}
-		cout<<debug++<<endl;
 	}
 	
 	// get the right order
@@ -74,18 +73,19 @@ size_t Flow_mapping(const char* dst_file, const char* header_file, const char* f
 	}
 
 	ofstream flow_rec(dst_file);
-	flow_rec.precision(16);
+	flow_rec.precision(10);
 	//flow_rec.precision(18);
 	header_f.clear();
 	header_f.seekg(ios::beg);
 	size_t counter = 0;
 	string header_str;
 
+	getline(header_f, header_str);
 	while (counter < max_size && !timestamp_list.empty() && !header_f.eof()){
-		getline(header_f, header_str);
 		flow_rec<<timestamp_list.top().stime<<"\t"<<timestamp_list.top().dur<<"\t"<<header_str<<endl;
 		counter ++;
 		timestamp_list.pop();
+		getline(header_f, header_str);
 	}
 	
 	flow_st.close();

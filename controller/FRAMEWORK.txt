@@ -1,0 +1,16 @@
+RuleParsing:
+	parsing rules into terms and store it:
+	Rule_Parsing(file_name)
+
+QuadTree Construction:
+	Check what rules are in a certain cut space;
+	Space_matching(cut_space, parsed_rule)
+
+	Do cut and find a most balanced cut
+	Do_cut(cut_node)
+		balance_idx = Space_matching(cut_space, parsed_rule)
+		check the feasibility of the cut, this cut reduce the overlapp
+	
+
+		
+	
