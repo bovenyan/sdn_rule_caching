@@ -101,19 +101,16 @@ inline void OFswitch::fetchStat(double curTime){
 }
 
 // for synthetic traces
-inline bool OFswitch::parseHeader_syn(string & str, packet &packInfo, double prevTime, default_random_engine & gen, exponential_distribution<double> & ts_dist, istream dur_file){
+inline bool OFswitch::parseHeader_syn(string & str, packet &packInfo){
 	vector<string> fields;	
 	boost::split( fields, str, boost::is_any_of("\t"));
-	packInfo.timestamp = prevTime + ts_dist(gen);
+	packInfo.timestamp = stod(fields[0].c_str());
+	packInfo.duration = stod(fields[1].c_str());
 	packInfo.predicate[0] = unsigned(atoi(fields[0].c_str()));
 	packInfo.predicate[1] = unsigned(atoi(fields[1].c_str()));
 	packInfo.predicate[2] = unsigned(atoi(fields[2].c_str()));
 	packInfo.predicate[3] = unsigned(atoi(fields[3].c_str()));
-	string dur_str;
-	getline(dur_file, dur_str);
-	packInfo.duration = stod(dur_str);
 
-	
 	if (!insubnet(packInfo.predicate, subnet))
 		return false;
 	return true;
@@ -129,7 +126,6 @@ void OFswitch::ProcTrace_syn(bool to_lru){
 	exponential_distribution<double> distr_arr(config.arr_lambda);
 	exponential_distribution<double> distr_dur(config.dur_lambda);
 	
-	// Caching & record
 	
 	// intermediate variable
 	double curTime = 0.0;
@@ -139,15 +135,23 @@ void OFswitch::ProcTrace_syn(bool to_lru){
 	int nextCheckPoint = config.samplingTime;
 	
 	if (to_lru){ // TimeOut, measure space
-		Cache cache(config.buckTimeOut);
+		Cache cache(config.buckTimeOut); // Caching & record
+		getline(trace, line);
+		
 		while (curTime < config.testDur || !trace.eof()){
-			getline(trace, line);
 			curTime = pack.timestamp;
-			if (!parseHeader_syn(line, pack, curTime, gen, distr_arr, distr_dur))
+			
+			if (!parseHeader_syn(line, pack)){ // not in subnet 
+				getline(trace, line);
 				continue;
+			}
+			
 			effBuck = buckTree->searchBucket(pack.predicate, buckTree->bucketRoot);
-			if (effBuck == NULL) // not found;
+			
+			if (effBuck == NULL){ // bucket not found;
+				getline(trace, line);
 				continue;
+			}
 
 			if (cache.Query_TO(effBuck, pack.timestamp+pack.duration, pack.timestamp)){
 				stat.hitNo++;
@@ -160,21 +164,31 @@ void OFswitch::ProcTrace_syn(bool to_lru){
 				nextCheckPoint += config.samplingTime;
 				cache.cleanup_TO(pack.timestamp);
 			}
+
+			getline(trace, line);
 		}
 	}
 	else{ // LRU, measure delay
 		size_t token = 0;
 		double nextTokenTime = 0;
 		size_t genToken = 0;
-		Cache cache(config.TCAMcap);
+		Cache cache(config.TCAMcap); // Caching & record
+
+		getline(trace, line);
 		while (curTime < config.testDur || !trace.eof()){
-			getline(trace, line);
 			curTime = pack.timestamp;
-			if (!parseHeader_syn(line, pack, curTime, gen, distr_arr, distr_dur))
+			
+			if (!parseHeader_syn(line, pack)){ // not in subnet 
+				getline(trace, line);
 				continue;
+			}
+			
 			effBuck = buckTree->searchBucket(pack.predicate, buckTree->bucketRoot);
-			if (effBuck == NULL) // not found;
+			
+			if (effBuck == NULL){ // not found;
+				getline(trace, line);
 				continue;
+			}
 			
 			queryNo = cache.Query_LRU(effBuck, pack.timestamp+pack.duration, pack.timestamp);
 			
@@ -199,10 +213,11 @@ void OFswitch::ProcTrace_syn(bool to_lru){
 					nextTokenTime += ((queryNo - token) * config.tokenGenInt);
 					stat.qDelay += (nextTokenTime-config.tokenGenInt-curTime);
 				}
-
 				// transmission delay
 				stat.tDelay += queryNo/config.bandwidth;
 			}
+			
+			getline(trace, line);
 		}
 	}
 }

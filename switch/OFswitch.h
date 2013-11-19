@@ -210,7 +210,7 @@ class OFswitch{
 	inline void fetchStat(double);
 
 	// for sythetic traces
-	inline bool parseHeader_syn(string &, packet &, double, default_random_engine &, exponential_distribution<double> &, exponential_distribution<double> &);
+	inline bool parseHeader_syn(string &, packet &);
 	
 };
 

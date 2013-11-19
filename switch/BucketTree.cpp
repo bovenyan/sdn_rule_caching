@@ -2,6 +2,48 @@
 
 using Z::Rule; using Z::Redundancy_Filter; using Z::ORtoR;
 
+/* ------------------- Class OneBucket -------------------------------------------------------------------
+ *
+*/
+
+// Constructors:
+OneBucket::OneBucket(){
+	init();
+}
+
+OneBucket::OneBucket(const OneBucket & buck){
+	init();
+	for (int i = 0; i < 4; i++){
+		for (int j = 0; j < 2; j++)
+			predicate[i][j] = buck.predicate[i][j];
+	}
+	relaRules = buck.relaRules;
+}
+
+OneBucket::OneBucket(string subNet_s){
+	init();
+	vector<string> fields;
+	boost::split(fields, subNet_s, boost::is_any_of("/"));
+	predicate[0][0] = maskIP(fields[0], atoi(fields[1].c_str()));
+	predicate[0][1] = atoi(fields[1].c_str());
+	predicate[1][0] = maskIP(fields[0], atoi(fields[1].c_str()));
+	predicate[1][1] = atoi(fields[1].c_str());
+}
+
+
+// Initialize each bucket
+void OneBucket::init(){
+	for (int i = 0; i < 4; i++){
+		for (int j = 0; j < 2; j++)
+			predicate[i][j] = 0;
+	}
+
+	relaRules.reserve(0);
+	for (int i = 0; i < SONNO; i++)
+		sonList[i] = NULL;
+}
+
+// Redundancy removal of overlapped rule
 void OneBucket::RedRemove(RuleList * ruleObj){
 	vector<Rule> fdd_ruleList;
 	ORtoR(ruleObj, relaRules, fdd_ruleList);
@@ -44,18 +86,92 @@ void OneBucket::RedRemove(RuleList * ruleObj){
 	relaRules = noRedRuleID;
 }
 
-// ------------------- BucketTree
+// serialization
+template<class Archive>
+void OneBucket::serialize(Archive &ar, const size_t version){
+	ar & predicate; // array
+	ar & relaRules;
+	ar & sonList; // array
+}
 
-//basic tree construction
+// debug
+void OneBucket::printInfo(){
+	cout<<"src:"<<get_dotDeci(predicate[0])<<" dst:"<<get_dotDeci(predicate[1])<<" srcP:";
+	cout<<predicate[2][0]<<"-"<< (predicate[2][0] + (1 << (16 - predicate[2][1])) - 1)<<" dstP:";
+	cout<<predicate[3][0]<<"-"<< (predicate[3][0] + (1 << (16 - predicate[2][1])) - 1) <<endl;
+	cout<<"ruleInv:";
+	for (size_t i = 0; i<relaRules.size(); i ++)
+		cout<<relaRules[i] << " ";
+	cout<<endl;
+}
+
+/* ------------------- Class BucketTree -------------------------------------------------------------------
+ *
+*/
+
+// Constructors:
+BucketTree::BucketTree(): MAX_RULE(0), MAX_LEVEL(0){
+	bucketRoot = NULL;
+	ruleList = NULL;
+}
+
+BucketTree::BucketTree(RuleList* rl, string subnet_s, int maxrule, int maxlev):MAX_RULE(maxrule), MAX_LEVEL(maxlev){
+	ruleList = rl;
+	bucketNo = 0; 
+	avgRuleNo = 0;
+
+	bucketRoot = new OneBucket(subnet_s);
+
+	for (int i = 0; i< ruleList->size; i++){
+		bucketRoot->relaRules.push_back(i);
+	}
+
+	bucketRoot->RedRemove(ruleList);
+	cout<<"root ruleNo: "<<bucketRoot->relaRules.size()<<endl; 
+	// compute deci space
+	vector<bool> v(4);
+	fill(v.begin()+PAR, v.end(), false);
+	fill(v.begin()+PAR, v.end(), true);
+	int idxP = 0;
+	int idxC = 0;
+	do{
+		idxP = 0;
+		for(int i = 0; i<4; ++i){
+			if(!v[i]){
+				deciSpace[idxC][idxP] = i;
+				idxP++;
+			}
+		}
+		idxC ++;
+	}while(next_permutation(v.begin(), v.end()));
+
+	dfsTreeCon(bucketRoot, MAX_RULE, MAX_LEVEL-1);
+
+	cout<<"Bucket No: "<< bucketNo<<endl;
+	cout<<"avg rule no: "<<avgRuleNo/bucketNo<<endl;
+}
+
+OneBucket* BucketTree::searchBucket( const size_t (&packPred)[4], OneBucket * root){
+	for(int i = 0; i< SONNO; i++){
+		if (root->sonList[i] == NULL){
+			return root;
+		}
+		if (classPack(packPred, root->sonList[i]->predicate))
+			return searchBucket(packPred, root->sonList[i]);
+	}
+	return NULL;
+}
+
+
+// Tree construction using Depth-First-Search
 void BucketTree::dfsTreeCon(OneBucket * parentPtr, const size_t MaxRuleNo, const size_t restDept){
 	if (partition(parentPtr, MaxRuleNo, restDept)){
-		cout<<"rest"<< restDept<<endl;
 		for (int i = 0; i < SONNO; i++)
 			dfsTreeCon(parentPtr->sonList[i] , MaxRuleNo, restDept-1);
 	}
 }
 
-//tree constrction with large rule removal
+// Tree construction using Level-Order-Traversal
 void BucketTree::levTreeCon(OneBucket * parentPtr, const size_t MaxRuleNo, const size_t deptLim){
 	list<OneBucket*> levQue;
 	levQue.push_back(parentPtr);
@@ -123,7 +239,7 @@ void BucketTree::levTreeCon(OneBucket * parentPtr, const size_t MaxRuleNo, const
 
 
 
-// partition the node and get the lowest avg rule count
+// Partition the node and get the lowest avg rule count
 // return: true if cut sucess, otherwise false
 bool BucketTree::partition(OneBucket * parentPtr, const size_t MaxRuleNo, const size_t restDept){
 	
@@ -213,9 +329,82 @@ bool BucketTree::partition(OneBucket * parentPtr, const size_t MaxRuleNo, const 
 	}
 }
 
-// BuckArray
+// serialization
+void BucketTree::serializeTree(string file_name){
+	ofstream ofs(file_name.c_str());
+	boost::archive::text_oarchive oa(ofs);
+	oa << bucketRoot;
+}
 
-BuckArray::BuckArray(RuleList* rl, size_t buckNo, string subnet_s = "0.0.0.0/0"){
+// de-serialization
+void BucketTree::deserializeTree(string file_name){
+	ifstream ifs(file_name.c_str());
+	boost::archive::text_iarchive ia(ifs);
+	ia >> bucketRoot;
+}
+
+void BucketTree::delBucket(OneBucket * bucketPtr){
+	for(int i = 0; i<SONNO; i++){
+		if (bucketPtr->sonList[i] != NULL )
+			delBucket(bucketPtr->sonList[i]);
+	}
+	delete bucketPtr;
+}
+
+// debug function
+bool BucketTree::operator==(const BucketTree& other) const{
+	queue<OneBucket*> buffer;
+	queue<OneBucket*> buffer_other;
+
+	buffer.push(bucketRoot);
+	buffer_other.push(other.bucketRoot);
+
+	while(!buffer.empty()){
+		// compare predicate
+		for (int i= 0; i<4; i++){
+			for (int j=0; j<2; j++){
+				if (buffer.front()->predicate[i][j] != buffer_other.front()->predicate[i][j])
+					return false;
+			}
+		}
+		
+		// compare relaRules
+		if (buffer.front()->relaRules.size()!=buffer_other.front()->relaRules.size())
+			return false;
+		for(size_t i = 0; i < buffer.front()->relaRules.size(); i++){
+			if (buffer.front()->relaRules[i] != buffer_other.front()->relaRules[i])
+				return false;
+		}
+		// compare and push son
+		
+		for (int i = 0; i<SONNO; i++){
+			if (buffer.front()->sonList[i] == NULL){
+				if (buffer_other.front()->sonList[i] != NULL)
+					return false;
+				continue;
+			}
+
+			if (buffer_other.front()->sonList[i] == NULL){
+				if (buffer.front()->sonList[i] != NULL)
+					return false;
+				continue;
+			}
+			buffer.push(buffer.front()->sonList[i]);
+			buffer_other.push(buffer_other.front()->sonList[i]);
+		}
+		
+		buffer.pop();
+		buffer_other.pop();
+	}
+	return true;
+}
+
+
+/* ------------------- Class BuckArray -------------------------------------------------------------------
+ *
+*/
+
+BuckArray::BuckArray(RuleList* rl, size_t buckNo, string subnet_s){
 	ruleList = rl;
 	arrayWid = (size_t)pow(buckNo, 0.5) + 1;
 	buckArray = new OneBucket* [arrayWid];
@@ -246,90 +435,3 @@ BuckArray::~BuckArray(){
 	delete [] buckArray;
 }
 
-// deprecated...
-
-/*
-void BucketTree::partition(OneBucket * parentPtr, const size_t MaxRuleNo, const size_t restDept){
-	// parentPtr->printInfo();
-	avgRuleNo += parentPtr->relaRules.size();
-	if (parentPtr->relaRules.size() <= MaxRuleNo || restDept == 0){ // stop condition 1
-		bucketNo += 1;
-		return;
-	}
-
-	unsigned int avgRule = parentPtr->relaRules.size() + 1;
-
-
-	for (int i = 0; i < CombiSize; i++){ // check all possible cut combination
-		// determine reach end	
-		bool effective = true;
-		for (int k = 0; k <PAR; k++){
-			if(deciSpace[i][k] < 2){ // ip
-				if (parentPtr->predicate[deciSpace[i][k]][1] == 32)
-					effective = false;
-			}
-			else{ // port
-				if (parentPtr->predicate[deciSpace[i][k]][1] == 16)
-					effective = false;
-			}
-		}
-
-		if(!effective)
-			continue;
-		
-		// generate buckets according to cut
-		size_t avgRule_c = 0;
-		OneBucket * tempSon[SONNO];
-		for (int j = 0; j < SONNO; j++){
-			tempSon[j] = new OneBucket(*parentPtr); // copy from paremt
-			bitset<PAR> jbit (j);
-			for (int k = 0; k < PAR; k++){ 
-				unsigned int incre = 1;
-				unsigned int & pref = tempSon[j]->predicate[deciSpace[i][k]][0];
-				unsigned int & mask = tempSon[j]->predicate[deciSpace[i][k]][1];
-
-				if ( deciSpace[i][k] < 2){ // ip
-					incre = (incre << (31 - mask));
-				}
-				else // port
-					incre = (incre << (15 - mask));
-
-				if (jbit.test(k))
-					pref += incre;	// pref + 1;
-				
-				mask += 1;	 // mask+1
-			}
-
-			tempSon[j]->RedRemove(ruleList);
-			
-			avgRule_c += tempSon[j]->relaRules.size();
-		}
-
-		if (avgRule_c/4 < avgRule){
-			for (int j = 0; j < SONNO; j ++){
-				delete parentPtr->sonList[j];
-				parentPtr->sonList[j] = tempSon[j];
-			}
-			avgRule = avgRule_c/4;
-		}
-		else{
-			for (int j = 0; j < SONNO; j ++)
-				delete tempSon[j];
-		}
-
-	}
-
-	if (avgRule >= parentPtr->relaRules.size()){ // stop condition 2 
-		bucketNo += 1;
-		for (int j = 0; j < SONNO; j++)
-			delete parentPtr->sonList[j];
-	}
-	else{	// DFS
-		for (int i = 0; i < SONNO; i++)
-			partition(parentPtr->sonList[i] , MaxRuleNo, restDept-1);
-
-	}
-}
-
-
-*/

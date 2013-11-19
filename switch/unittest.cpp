@@ -2,15 +2,49 @@
 #include "RuleParsing.h"
 #include "RedRemoval.h"
 #include "BucketTree.h"
-#include "OFswitch.h"
+//#include "OFswitch.h"
 
 using namespace std;
 using Z::Rule;
 
 int main(){
+	/*for (size_t cc = 1; cc<=20; cc++){
+		string cc_s = to_string(cc*500);
+	string ruleDir = "../classbench/rulesets/rule"+cc_s;
+	RuleList RuleRec(ruleDir);
+	cout<<"Rule got a size of "<< RuleRec.size <<endl;
+	size_t total_counter = 0;
+	for (auto iter = RuleRec.handle.begin(); iter != RuleRec.handle.end(); iter++){
+		size_t match_counter = 0;
+		for (auto iter_o = RuleRec.handle.begin(); iter_o != RuleRec.handle.end(); iter_o++){
+			if (iter->match_rule(iter_o->srcIP_i, iter_o->dstIP_i)){
+				match_counter ++;
+			}
+		
+		}
+		total_counter += match_counter;
+	}
+	cout<<"Each rule is on average overlapped with "<< total_counter/RuleRec.size<< " other rules"<<endl;
+	}
+	
+	return 0;*/
+	
+	
+	
 	string ruleDir = "../classbench/db_generator/MyFilters300";
 	RuleList RuleRec(ruleDir);
 	BucketTree BuckTree( &RuleRec);
+	BucketTree BuckTree2;
+	BuckTree2.ruleList = &RuleRec;
+	BuckTree.serializeTree("testSeri.txt");
+	BuckTree2.deserializeTree("testSeri.txt");
+
+	if (BuckTree == BuckTree2)
+		cout<<"equal"<<endl;
+	else
+		cout<<"inequal"<<endl;
+
+	/*
 	cout<<"Finish bucket and tree construction"<<endl;
 	
 	configuration config;
@@ -30,6 +64,10 @@ int main(){
 	stat.pck_qDelay = 0.0;
 	stat.rule_downNo = 0;
 	stat.total_reqNo_sampT = 0;
+	*/
+
+
+
 	/*
 	OFswitch ofs(&RuleRec, &BuckTree);
 	ofs.ProcTrace_s(config, stat);

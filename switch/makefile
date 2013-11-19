@@ -1,5 +1,6 @@
 BOOST_ROOT=/usr/local/boost_1_54_0
-OBJS = unittest.o RedRemoval.o RuleParsing.o tools.o BucketTree.o OFswitch.o
+# OBJS = unittest.o RedRemoval.o RuleParsing.o tools.o BucketTree.o OFswitch.o
+OBJS = unittest.o RedRemoval.o RuleParsing.o tools.o BucketTree.o 
 CC = g++
 DEBUG = -g
 BOOST_L = -L $(BOOST_ROOT)/stage/lib 
@@ -26,8 +27,8 @@ tools.o: tools.h tools.cpp
 BucketTree.o: BucketTree.h BucketTree.cpp tools.h RuleParsing.h RedRemoval.h
 	$(CC) $(BOOST_I) $(CFLAGS) BucketTree.cpp
 
-OFswitch.o: OFswitch.h OFswitch.cpp BucketTree.h RuleParsing.h tools.h
-	$(CC) $(BOOST_I) $(CFLAGS) OFswitch.cpp
+#OFswitch.o: OFswitch.h OFswitch.cpp BucketTree.h RuleParsing.h tools.h
+#	$(CC) $(BOOST_I) $(CFLAGS) OFswitch.cpp
 
 clean:
 	\rm *.o *~ demo.out
